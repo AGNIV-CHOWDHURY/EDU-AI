@@ -47,6 +47,7 @@ Every AI feature in the app is powered by Gemini:
 API keys for Gemini are issued and managed through Google AI Studio. The free tier is generous enough to run EduAI in development and small deployments.
 
 ---
+For coding help is taken from Google Gemini
 
 ## 🧱 Full Tech Stack
 
@@ -253,6 +254,209 @@ eduai_new/
 ```
 
 ---
+# 🏗️ EduAI — Architecture Overview
+
+EduAI is a Flask-based web application that helps teachers manage student performance using AI-powered analysis, recommendations, and study tools. It supports two user roles — **Teacher** and **Student** — each with their own portal.
+
+---
+
+## 📁 Project Structure
+
+```
+eduai_new/
+├── app.py                  # Main Flask application — routes & business logic
+├── ai_service.py           # All AI & vector DB integrations
+├── models/
+│   ├── __init__.py
+│   └── models.py           # SQLAlchemy ORM models
+├── templates/              # Jinja2 HTML templates
+│   ├── base.html
+│   ├── dashboard.html
+│   ├── student_portal.html
+│   └── ...                 # Feature-specific templates
+├── static/
+│   └── uploads/            # Uploaded report card PDFs
+├── requirements.txt
+├── render.yaml             # Render.com deployment config
+├── Dockerfile
+└── .env.example
+```
+
+---
+
+## 🧩 Architecture Diagram
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                        Browser                          │
+│              (Teacher Portal / Student Portal)          │
+└───────────────────────┬─────────────────────────────────┘
+                        │ HTTP
+                        ▼
+┌─────────────────────────────────────────────────────────┐
+│              Flask Application  (app.py)                │
+│                                                         │
+│  ┌────────────┐  ┌──────────────┐  ┌────────────────┐  │
+│  │  Auth      │  │  Teacher     │  │  Student       │  │
+│  │  Routes    │  │  Routes      │  │  Portal Routes │  │
+│  │ /login     │  │ /dashboard   │  │ /portal        │  │
+│  │ /register  │  │ /add-student │  │ /portal/classes│  │
+│  │ /logout    │  │ /report-card │  │ /portal/notes  │  │
+│  └────────────┘  └──────┬───────┘  └────────────────┘  │
+│                         │                               │
+│              ┌──────────▼───────────┐                   │
+│              │    ai_service.py     │                   │
+│              │  (AI Orchestration)  │                   │
+│              └──────────┬───────────┘                   │
+└─────────────────────────┼───────────────────────────────┘
+                          │
+          ┌───────────────┼───────────────┐
+          ▼               ▼               ▼
+  ┌───────────────┐ ┌──────────┐ ┌──────────────┐
+  │  Gemini 2.5   │ │Pinecone  │ │  Daily.co    │
+  │  Flash (LLM)  │ │(Vectors) │ │  (Video)     │
+  └───────────────┘ └──────────┘ └──────────────┘
+          
+          ┌────────────────────────────┐
+          │   PostgreSQL (via Render)  │
+          │   or SQLite (local dev)    │
+          └────────────────────────────┘
+```
+
+---
+
+## 🔑 Core Components
+
+### 1. `app.py` — Flask Application
+The single-file Flask app that handles all routing, session management, and orchestration. Key areas:
+
+| Area | Routes |
+|---|---|
+| Auth | `/login`, `/register`, `/logout` |
+| Teacher Dashboard | `/dashboard`, `/add-student`, `/bulk-import` |
+| Student Management | `/student/<id>`, `/student/<id>/progress` |
+| Report Cards | `/report-card`, `/report/<id>` |
+| Resources | `/student/<id>/resources`, `/resource-budget` |
+| Intervention | `/intervention-groups` |
+| Video Classes | `/classes`, `/classes/schedule`, `/classes/<id>/join` |
+| Study Notes | `/student/<id>/study-notes` |
+| Student Portal | `/portal`, `/portal/classes`, `/portal/study-notes` |
+| APIs | `/api/dashboard-summary`, `/api/validate-login` |
+
+### 2. `ai_service.py` — AI Orchestration Layer
+All AI calls are isolated here. It integrates with:
+
+- **Google Gemini 2.5 Flash** — primary LLM for all analysis and generation tasks
+- **Pinecone** (vector DB) — stores 3D student performance vectors `[marks, attendance, assignments]` for similarity search
+
+| Function | Purpose |
+|---|---|
+| `analyze_student()` | Classify student as Weak / Average / Strong with study plan |
+| `analyze_report_card()` | Parse and analyse uploaded PDF report cards |
+| `recommend_resources()` | Suggest study resources per student's weak areas |
+| `recommend_resources_with_feedback()` | Re-recommend resources using prior teacher feedback |
+| `plan_resource_budget()` | Allocate teacher attention hours across students |
+| `plan_group_intervention()` | Cluster weak students and generate group session plans |
+| `generate_study_notes()` | Create AI study notes per subject for a student |
+| `analyze_progress()` | Analyse a student's checkpoint history for progress trends |
+| `get_similar_students()` | Query Pinecone for students with similar performance vectors |
+| `store_student_in_pinecone()` | Upsert a student's performance vector into the index |
+
+All AI functions have a `_fallback_*` counterpart that returns rule-based results if the Gemini API is unavailable.
+
+### 3. `models/models.py` — Database Layer (SQLAlchemy ORM)
+
+| Model | Table | Description |
+|---|---|---|
+| `User` | `users` | Teacher accounts |
+| `StudentUser` | `student_users` | Student login accounts (linked to `Student`) |
+| `Student` | `students` | Student records with marks, attendance, AI analysis |
+| `ReportCardAnalysis` | `report_analyses` | Uploaded PDF analysis results |
+| `ResourceRecommendation` | `resource_recommendations` | AI resource suggestions per student |
+| `ResourceBudgetPlan` | `resource_budget_plans` | Teacher time allocation plans |
+| `InterventionGroup` | `intervention_groups` | AI-clustered student groups with session plans |
+| `ProgressCheckpoint` | `progress_checkpoints` | Re-assessment snapshots over time |
+| `VideoClass` | `video_classes` | Scheduled Daily.co video sessions |
+| `StudyNote` | `study_notes` | AI-generated study notes per subject |
+| `ResourceFeedback` | `resource_feedback` | Teacher feedback on resource effectiveness |
+
+---
+
+## 🔐 Authentication
+
+Two separate user types share a single Flask-Login session using a prefixed ID strategy:
+
+- **Teacher** — `User` model, ID stored as integer (e.g. `42`)
+- **Student** — `StudentUser` model, ID stored as `student:42`
+
+The `user_loader` dispatches to the correct model based on the prefix, enabling both portals to coexist without session conflicts.
+
+---
+
+## 🌐 External Services
+
+| Service | Purpose | Env Variable |
+|---|---|---|
+| **Google Gemini 2.5 Flash** | All LLM inference | `GEMINI_API_KEY` |
+| **Pinecone** (Serverless, AWS us-east-1) | Student similarity vectors | `PINECONE_API_KEY`, `PINECONE_INDEX_NAME` |
+| **Daily.co** | Video class rooms | `DAILY_API_KEY` |
+| **PostgreSQL** | Production database (via Render) | `DATABASE_URL` |
+
+---
+
+## 🗄️ Data Flow — Adding a Student
+
+```
+Teacher fills form → POST /add-student
+        │
+        ▼
+  Validate inputs
+        │
+        ▼
+  ai_service.get_similar_students()   ← Pinecone similarity query
+        │
+        ▼
+  ai_service.analyze_student()        ← Gemini 2.5 Flash
+        │
+        ▼
+  parse_analysis() → category, weak_areas, suggestions, study_plan
+        │
+        ▼
+  Save Student to PostgreSQL
+        │
+        ▼
+  ai_service.store_student_in_pinecone()  ← upsert vector
+```
+
+---
+
+## 🚀 Deployment
+
+The app is configured for **Render.com** via `render.yaml`:
+
+- **Runtime:** Python 3.11
+- **Server:** Gunicorn (1 worker, 8 threads, 120s timeout)
+- **Database:** Render-managed PostgreSQL (free tier)
+- **Static uploads:** stored in `static/uploads/` (ephemeral on free tier — consider object storage for production)
+
+For local development, the app falls back to **SQLite** (`eduai.db`) when `DATABASE_URL` is not set.
+
+```bash
+# Quick local start
+pip install -r requirements.txt
+cp .env.example .env   # fill in API keys
+python app.py
+```
+
+---
+
+## ⚙️ Key Design Decisions
+
+- **Single `app.py`** — all routes in one file for simplicity; can be split into Flask Blueprints as the project scales.
+- **Fallback AI responses** — every AI function has a rule-based fallback so the app remains usable without API keys.
+- **JSON in text columns** — some relational data (e.g. `subject_marks`, `allocations`, `student_ids`) is stored as JSON strings in `Text` columns for flexibility; consider migrating to `JSONB` on PostgreSQL.
+- **PDF parsing** — `pdfplumber` is used to extract text from uploaded report cards before passing to the LLM.
+- **Markdown rendering** — a custom Jinja2 filter (`markdown`) converts AI-generated markdown to HTML for display.
 
 ## ⚠️ Important Notes
 
