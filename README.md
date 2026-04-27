@@ -94,6 +94,18 @@ API keys for Gemini are issued and managed through Google AI Studio. The free ti
 | **PyPDF2** | 3.0.1 | PDF utilities and fallback parsing |
 | **Pillow** | 10.3.0 | Image processing for uploaded files |
 
+### 🎨 Frontend
+
+| Technology | Purpose |
+|---|---|
+| **Jinja2** | Server-side HTML templating engine built into Flask — renders all 20+ pages dynamically |
+| **Custom CSS (Vanilla)** | Fully hand-written dark-theme UI with CSS variables, glassmorphism cards, responsive grid layout — no CSS framework used |
+| **Google Fonts** | Typography — **Syne** (headings, bold UI elements) + **DM Sans** (body text), loaded via Google Fonts CDN |
+| **Chart.js 4.4.1** | Interactive charts — used for student score trend graphs and progress tracking visualizations (loaded via cdnjs CDN) |
+| **HTML5 Canvas API** | Native browser canvas used for custom progress charts in student portal |
+| **Daily.co JS SDK** (`@daily-co/daily-js`) | Embeds the live video call iframe directly inside the classroom page — loaded via unpkg CDN |
+| **Vanilla JavaScript** | Dynamic form rows (bulk import), chart rendering, video room embedding — no frontend framework needed |
+
 ### 📹 Video Conferencing
 
 | Technology | Purpose |
